@@ -40,6 +40,7 @@ Original motivation: Claude Code's parallel-subagent usage moved to separately-m
 - Durable (disk/DB) persistence in `codex-mcp-server`. The ledger is already the durable record; adding a second durable store is unjustified duplication (YAGNI).
 - Webhook/callback plumbing. MCP transport cannot push notifications (verified in current source); building for it now is speculative.
 - Changing SDD's fix-loop, breaker, adjudication, or model-tiering *logic* — only the review backend changes.
+- The standalone `requesting-code-review` skill (used outside SDD, ad hoc `{BASE_SHA, HEAD_SHA, DESCRIPTION, PLAN_OR_REQUIREMENTS}` shape, no plan file). Only the three plan-file-scoped SDD touchpoints are in scope — see Open items.
 
 ## Design
 
@@ -73,7 +74,7 @@ Original motivation: Claude Code's parallel-subagent usage moved to separately-m
   2. Loads the phase-appropriate template verbatim (`task-reviewer-prompt.md` / `re-review-prompt.md` / `../requesting-code-review/code-reviewer.md`) plus the plan's Global Constraints block, as the `prompt` override.
   3. Calls `mcp__codex__review` with `base`, the composed `prompt`, `planId` (plan-file slug), `taskId`, `round`, `phase`, and the phase's model (see Model Selection below).
   4. Writes the returned text to a review-package-shaped file under the plan's workspace, prints `reviewId` + file path.
-- **SKILL.md updates** (`subagent-driven-development/SKILL.md`, `requesting-code-review/SKILL.md`): every "dispatch task reviewer / scoped re-review / final code reviewer" step now reads "run `codex-review-dispatch`" instead of dispatching a Claude Agent reviewer persona. Process diagrams updated to match.
+- **SKILL.md updates** (`subagent-driven-development/SKILL.md` only — see Non-goals): every "dispatch task reviewer / scoped re-review / final code reviewer" step now reads "run `codex-review-dispatch`" instead of dispatching a Claude Agent reviewer persona. Process diagrams updated to match. `requesting-code-review/code-reviewer.md` is reused as the final-review template (see Data flow) but the standalone `requesting-code-review` skill's own dispatch step is untouched — it takes ad hoc `{BASE_SHA, HEAD_SHA, DESCRIPTION, PLAN_OR_REQUIREMENTS}` outside any plan file, a different call shape than `codex-review-dispatch` (which is plan-file-scoped, matching `review-package`/`task-brief`). Building a second script signature for that ad hoc shape now, before this one has run once for real, is scope the confirmed decision ("3자리 다 codex" = task-review/re-review/final-review, the three SDD touchpoints) didn't ask for. Tracked as follow-up.
 - **Model Selection section** gains a Codex-model note, correcting an initial assumption from this design's first draft: `codex-mcp-server/src/types.ts` records (verified empirically 2026-08-05 against codex-cli 0.146.0, comment on `AVAILABLE_CODEX_MODELS`) that the entire `*-codex` model family (`gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex`, etc.) returns HTTP 400 "not supported when using Codex with a ChatGPT account" under this account's auth (ChatGPT subscription, not API key). Only `gpt-5.6-sol` and `gpt-5.6-terra` are confirmed working. With two working models and no documented cost/capability delta between them, there is no real tiering to build: **all three review phases use `gpt-5.6-sol`** (the existing `DEFAULT_REVIEW_MODEL`, already the reviewer role's pinned default) unless `CODEX_REVIEW_MODEL_ENV_VAR` overrides it. If the account later moves to API-key auth, the `*-codex` family becomes available and a real phase-tiering can be reconsidered then — not speculatively built now.
 - **Ledger line format** gains a reviewer tag, appended to the existing completion/fix-round/parked lines:
   `Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean) [reviewer: codex#<reviewId> model:gpt-5.6-sol]`
@@ -98,4 +99,5 @@ Original motivation: Claude Code's parallel-subagent usage moved to separately-m
 
 ## Open items carried forward (not this spec's scope)
 
+- A second dispatch script (or a mode flag on `codex-review-dispatch`) for the standalone `requesting-code-review` skill's ad hoc `{BASE_SHA, HEAD_SHA, DESCRIPTION, PLAN_OR_REQUIREMENTS}` shape, once the plan-file-scoped version has run for real.
 - `CLAUDE.md` (both global and this project's) point at a memory file `codex-mcp-orchestration` that does not exist (`~/.claude/projects/.../memory/` has no such file). Once this fork ships, that memory should be written to reflect the actual, current operating principles — out of scope for this spec.
