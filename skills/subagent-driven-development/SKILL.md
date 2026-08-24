@@ -323,6 +323,13 @@ report missing either verdict — spec compliance AND task quality are both
 required. Implementer self-review never replaces the task review; both are
 needed.
 
+**Fork-local:** `codex-review-dispatch` (used in Section 2's DONE step)
+already assembles the diff file, the brief, the report, and the Global
+Constraints block into one prompt file automatically — the manual assembly
+described below is what it does internally, and what you fall back to by
+hand only if `mcp__codex__review` fails twice and you dispatch a Claude
+Agent reviewer instead (see Section 2's fallback rule).
+
 - Hand the reviewer its diff as a file: run this skill's
   `scripts/review-package PLAN_FILE BASE HEAD` and pass the reviewer the file path
   it prints (or, without bash: `git log --oneline`, `git diff --stat`,
@@ -468,7 +475,7 @@ The final whole-branch review gets a package too: run
 [code-reviewer.md](../requesting-code-review/code-reviewer.md) as the
 rubric, composed with the branch diff, into a prompt file — read the file,
 then make the printed `mcp__codex__review(...)` call. (Fork-local: routes
-to Codex, not a Claude Agent reviewer persona. See Model Selection below —
+to Codex, not a Claude Agent reviewer persona. See Model Selection above —
 only one Codex review model works under this account's auth, so there is
 no "most capable" tier to pick between for this step.) If the
 `mcp__codex__review` call errors, retry it once unchanged; if it errors
@@ -481,9 +488,10 @@ If the final whole-branch review returns findings, dispatch ONE fix subagent
 with the complete findings list — not one fixer per finding.
 Per-finding fixers each rebuild context and re-run suites; a real
 session's final-review fix wave cost more than all its tasks combined.
-Then run exactly one scoped re-review of the fix wave
-(`scripts/review-package PLAN_FILE FIX_BASE HEAD` over the fix range,
-[re-review-prompt.md](re-review-prompt.md)).
+Then run exactly one scoped re-review of the fix wave: run
+`scripts/codex-review-dispatch PLAN_FILE FIX_BASE HEAD re-review final 1`
+over the fix range (fork-local: this too routes to Codex, same retry-once-
+then-Claude-Agent-fallback rule as above) and give it the findings list.
 Adjudicate any residual findings as in the task loop's breaker: park with
 rulings, or rule on the load-bearing ones and ledger what you decided. Only
 the four classes above stop you here. There is no second fix wave —
