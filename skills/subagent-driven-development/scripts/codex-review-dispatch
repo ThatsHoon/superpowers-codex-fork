@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Prepare a Codex review dispatch: generate the diff file (via review-package),
+# extract this plan's Global Constraints, and compose the full reviewer
+# prompt (phase template + diff path + constraints + brief/report paths) into
+# one file. Prints that file's path plus the planId/taskId/round/phase values
+# to pass into mcp__codex__review.
+#
+# This script never calls the MCP tool itself — a bash script cannot; only
+# the calling agent turn can. Same division of labor as review-package: this
+# script prepares, the controller dispatches.
+#
+# Usage:
+#   codex-review-dispatch PLAN_FILE BASE HEAD final-review
+#   codex-review-dispatch PLAN_FILE BASE HEAD task-review TASK_NUMBER
+#   codex-review-dispatch PLAN_FILE BASE HEAD re-review TASK_NUMBER ROUND
+set -euo pipefail
+
+usage() {
+  echo "usage: codex-review-dispatch PLAN_FILE BASE HEAD final-review" >&2
+  echo "       codex-review-dispatch PLAN_FILE BASE HEAD task-review TASK_NUMBER" >&2
+  echo "       codex-review-dispatch PLAN_FILE BASE HEAD re-review TASK_NUMBER ROUND" >&2
+}
+
+if [ $# -lt 4 ] || [ $# -gt 6 ]; then
+  usage
+  exit 2
+fi
+
+plan=$1
+base=$2
+head=$3
+phase=$4
+task_num=${5:-}
+round=${6:-}
+
+[ -f "$plan" ] || { echo "no such plan file: $plan" >&2; exit 2; }
+
+case "$phase" in
+  final-review)
+    [ $# -eq 4 ] || { echo "final-review takes exactly 4 args" >&2; usage; exit 2; }
+    ;;
+  task-review)
+    [ $# -eq 5 ] || { echo "task-review requires TASK_NUMBER (5 args)" >&2; usage; exit 2; }
+    ;;
+  re-review)
+    [ $# -eq 6 ] || { echo "re-review requires TASK_NUMBER and ROUND (6 args)" >&2; usage; exit 2; }
+    ;;
+  *)
+    echo "unknown phase: $phase (must be task-review, re-review, or final-review)" >&2
+    exit 2
+    ;;
+esac
+
+git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
+git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+dir=$("$script_dir/sdd-workspace" "$plan")
+
+diff_out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
+"$script_dir/review-package" "$plan" "$base" "$head" "$diff_out" >/dev/null
+
+case "$phase" in
+  task-review) template="$script_dir/../task-reviewer-prompt.md" ;;
+  re-review) template="$script_dir/../re-review-prompt.md" ;;
+  final-review) template="$script_dir/../../requesting-code-review/code-reviewer.md" ;;
+esac
+[ -f "$template" ] || { echo "template not found: $template" >&2; exit 2; }
+
+constraints=$(awk '
+  /^##[ \t]+Global Constraints/ { grab=1; next }
+  grab && /^##/ { exit }
+  grab { print }
+' "$plan")
+[ -n "$constraints" ] || constraints="(none stated in plan)"
+
+case "$phase" in
+  task-review)
+    prompt_out="$dir/codex-review-task-${task_num}-prompt.md"
+    brief="$dir/task-${task_num}-brief.md"
+    report="$dir/task-${task_num}-report.md"
+    extra_files="Task brief (read first — exact requirements): ${brief}
+Implementer report (read for what was tried/tested): ${report}"
+    ;;
+  re-review)
+    prompt_out="$dir/codex-review-task-${task_num}-round-${round}-prompt.md"
+    brief="$dir/task-${task_num}-brief.md"
+    report="$dir/task-${task_num}-report.md"
+    extra_files="Task brief: ${brief}
+Implementer report (fix round appended): ${report}
+This is fix round ${round} — verdict each prior finding ADDRESSED or NOT ADDRESSED; flag only NEW Critical/Important breakage introduced by the fix diff. Out-of-scope observations are deferred minors, not loop-extending findings."
+    ;;
+  final-review)
+    prompt_out="$dir/codex-review-final-prompt.md"
+    extra_files="This is the final whole-branch review — the plan's full task list is the scope."
+    ;;
+esac
+
+{
+  cat "$template"
+  echo
+  echo "---"
+  echo "Diff file (read this — full diff with 10 lines context): ${diff_out}"
+  echo
+  echo "Global Constraints (binding for this review):"
+  echo "$constraints"
+  echo
+  echo "$extra_files"
+} > "$prompt_out"
+
+plan_slug=$(basename "$plan" .md)
+echo "wrote ${prompt_out}"
+echo "dispatch: mcp__codex__review(base=\"${base}\", prompt=<contents of ${prompt_out}>, planId=\"${plan_slug}\", taskId=\"${task_num:-final}\", round=${round:-1}, phase=\"${phase}\")"
