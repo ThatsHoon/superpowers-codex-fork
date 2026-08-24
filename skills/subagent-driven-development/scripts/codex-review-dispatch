@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Prepare a Codex review dispatch: generate the diff file (via review-package),
 # extract this plan's Global Constraints, and compose the full reviewer
 # prompt (phase template + diff path + constraints + brief/report paths) into
