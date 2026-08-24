@@ -110,4 +110,4 @@ esac
 
 plan_slug=$(basename "$plan" .md)
 echo "wrote ${prompt_out}"
-echo "dispatch: mcp__codex__review(base=\"${base}\", prompt=<contents of ${prompt_out}>, planId=\"${plan_slug}\", taskId=\"${task_num:-final}\", round=${round:-1}, phase=\"${phase}\")"
+echo "dispatch: mcp__codex__review(prompt=<contents of ${prompt_out}>, planId=\"${plan_slug}\", taskId=\"${task_num:-final}\", round=${round:-1}, phase=\"${phase}\") -- no base/commit: codex CLI rejects combining those with a custom prompt, the diff reaches Codex via the file-read instruction already inside the prompt"

@@ -297,7 +297,7 @@ Template: [implementer-prompt.md](implementer-prompt.md)
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Run `scripts/codex-review-dispatch PLAN_FILE BASE HEAD task-review N` (from this skill's directory — BASE is the commit you recorded before dispatching the implementer, never `HEAD~1`, which silently drops all but the last commit of a multi-commit task; N is this task's number). It prints a prompt file path and the `mcp__codex__review(...)` call to make — read the file with one Read call, then make that call with the file's contents as `prompt`. The returned text is the task reviewer's verdict (fork-local: reviews route to Codex, not a Claude Agent reviewer persona). **If the `mcp__codex__review` call errors, retry it once unchanged. If it errors again, fall back to dispatching a Claude Agent reviewer with `../requesting-code-review/code-reviewer.md` (the pre-fork behavior) for this review only, and ledger `Task <N>: reviewer fallback (codex failed twice) — used Claude Agent`.**
+**DONE:** Run `scripts/codex-review-dispatch PLAN_FILE BASE HEAD task-review N` (from this skill's directory — BASE is the commit you recorded before dispatching the implementer, never `HEAD~1`, which silently drops all but the last commit of a multi-commit task; N is this task's number). It prints a prompt file path and the `mcp__codex__review(...)` call to make. Before calling, ledger `Task <N>: dispatching codex review (task-review)` — this is what lets a controller resumed after compaction know an attempt is already in flight, rather than starting fresh or skipping the fallback rule below. Read the prompt file with one Read call, then make the printed call — **no `base`/`commit`**: the underlying codex CLI rejects `review --base/--commit <PROMPT>` at the argument-parsing level (verified empirically), so the diff reaches Codex only through the file-read instruction already inside the composed prompt text. The returned text is the task reviewer's verdict (fork-local: reviews route to Codex, not a Claude Agent reviewer persona). **If the call errors, ledger `Task <N>: codex review attempt 1 failed, retrying` and retry it once unchanged. If it errors again, ledger `Task <N>: reviewer fallback (codex failed twice) — used Claude Agent` and fall back to dispatching a Claude Agent reviewer with `../requesting-code-review/code-reviewer.md` (the pre-fork behavior) for this review only.**
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -415,16 +415,21 @@ FIX_BASE HEAD re-review N R` where FIX_BASE is the head the previous review
 saw, N is the task number, and R is this fix round (1-5). It prints a
 prompt file (already containing the re-review rubric, the diff, and the
 round-scoping instructions) and the `mcp__codex__review(...)` call to make
-— read the file, make the call, its text is the re-reviewer's verdict.
-(Fork-local: routes to Codex, not a Claude Agent reviewer persona.) The
-re-reviewer verdicts each finding ADDRESSED or NOT ADDRESSED and flags new
-breakage in the fix diff only. New Critical/Important breakage in the fix
-diff joins the open findings list. Out-of-scope observations go to the
-ledger as deferred minors — they never extend the loop. If the
-`mcp__codex__review` call errors, retry it once unchanged; if it errors
-again, fall back to [re-review-prompt.md](re-review-prompt.md) dispatched to
-a Claude Agent for this round only, and ledger `Task <N>: reviewer fallback
-(codex failed twice, round <R>) — used Claude Agent`.
+— no `base`/`commit` in that call (codex CLI rejects combining those with a
+custom prompt; the diff reaches Codex via the file-read instruction already
+in the prompt). Before calling, ledger `Task <N>: dispatching codex review
+(re-review, round <R>)`. Read the file, make the call — its text is the
+re-reviewer's verdict. (Fork-local: routes to Codex, not a Claude Agent
+reviewer persona.) The re-reviewer verdicts each finding ADDRESSED or NOT
+ADDRESSED and flags new breakage in the fix diff only. New
+Critical/Important breakage in the fix diff joins the open findings list.
+Out-of-scope observations go to the ledger as deferred minors — they never
+extend the loop. If the call errors, ledger `Task <N>: codex review attempt
+1 failed, retrying (round <R>)` and retry it once unchanged; if it errors
+again, ledger `Task <N>: reviewer fallback (codex failed twice, round <R>)
+— used Claude Agent` and fall back to
+[re-review-prompt.md](re-review-prompt.md) dispatched to a Claude Agent for
+this round only.
 
 **After each round,** append to the ledger:
 `Task <N>: fix round <R>/5 (<X> addressed, <Y> open — <finding one-liners>; commits <a7>..<b7>)`
@@ -473,16 +478,20 @@ The final whole-branch review gets a package too: run
 (MERGE_BASE = the commit the branch started from, e.g.
 `git merge-base main HEAD`). It reuses
 [code-reviewer.md](../requesting-code-review/code-reviewer.md) as the
-rubric, composed with the branch diff, into a prompt file — read the file,
-then make the printed `mcp__codex__review(...)` call. (Fork-local: routes
-to Codex, not a Claude Agent reviewer persona. See Model Selection above —
+rubric, composed with the branch diff, into a prompt file. Before calling,
+ledger `Final review: dispatching codex review`. Read the file, then make
+the printed `mcp__codex__review(...)` call — no `base`/`commit` (codex CLI
+rejects combining those with a custom prompt; the diff reaches Codex via
+the file-read instruction already in the prompt). (Fork-local: routes to
+Codex, not a Claude Agent reviewer persona. See Model Selection above —
 only one Codex review model works under this account's auth, so there is
-no "most capable" tier to pick between for this step.) If the
-`mcp__codex__review` call errors, retry it once unchanged; if it errors
-again, fall back to superpowers:requesting-code-review's
+no "most capable" tier to pick between for this step.) If the call errors,
+ledger `Final review: codex review attempt 1 failed, retrying` and retry
+it once unchanged; if it errors again, ledger `Final review: reviewer
+fallback (codex failed twice) — used Claude Agent` and fall back to
+superpowers:requesting-code-review's
 [code-reviewer.md](../requesting-code-review/code-reviewer.md) dispatched to
-a Claude Agent for this final review only, and ledger `Final review:
-reviewer fallback (codex failed twice) — used Claude Agent`.
+a Claude Agent for this final review only.
 
 If the final whole-branch review returns findings, dispatch ONE fix subagent
 with the complete findings list — not one fixer per finding.
