@@ -74,14 +74,9 @@ Original motivation: Claude Code's parallel-subagent usage moved to separately-m
   3. Calls `mcp__codex__review` with `base`, the composed `prompt`, `planId` (plan-file slug), `taskId`, `round`, `phase`, and the phase's model (see Model Selection below).
   4. Writes the returned text to a review-package-shaped file under the plan's workspace, prints `reviewId` + file path.
 - **SKILL.md updates** (`subagent-driven-development/SKILL.md`, `requesting-code-review/SKILL.md`): every "dispatch task reviewer / scoped re-review / final code reviewer" step now reads "run `codex-review-dispatch`" instead of dispatching a Claude Agent reviewer persona. Process diagrams updated to match.
-- **Model Selection section** gains a Codex-model mapping, following the existing tiering philosophy (cheapest tier that can do the job; escalate for judgment/architecture):
-  | Phase | Codex model |
-  |---|---|
-  | task-review (single-task diff) | `gpt-5.2-codex` |
-  | re-review (scoped fix diff) | `gpt-5.1-codex` |
-  | final-review (whole-branch) | `gpt-5.6-sol` (most capable available) |
+- **Model Selection section** gains a Codex-model note, correcting an initial assumption from this design's first draft: `codex-mcp-server/src/types.ts` records (verified empirically 2026-08-05 against codex-cli 0.146.0, comment on `AVAILABLE_CODEX_MODELS`) that the entire `*-codex` model family (`gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex`, etc.) returns HTTP 400 "not supported when using Codex with a ChatGPT account" under this account's auth (ChatGPT subscription, not API key). Only `gpt-5.6-sol` and `gpt-5.6-terra` are confirmed working. With two working models and no documented cost/capability delta between them, there is no real tiering to build: **all three review phases use `gpt-5.6-sol`** (the existing `DEFAULT_REVIEW_MODEL`, already the reviewer role's pinned default) unless `CODEX_REVIEW_MODEL_ENV_VAR` overrides it. If the account later moves to API-key auth, the `*-codex` family becomes available and a real phase-tiering can be reconsidered then — not speculatively built now.
 - **Ledger line format** gains a reviewer tag, appended to the existing completion/fix-round/parked lines:
-  `Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean) [reviewer: codex#<reviewId> model:gpt-5.2-codex]`
+  `Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean) [reviewer: codex#<reviewId> model:gpt-5.6-sol]`
 
 ### Data flow
 
