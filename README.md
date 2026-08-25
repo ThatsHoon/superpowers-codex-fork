@@ -2,6 +2,19 @@
 
 Superpowers is a complete software development methodology for your coding agents, built on top of a set of composable skills and some initial instructions that make sure your agent uses them.
 
+> **Fork-local note:** this is a personal fork of [obra/superpowers](https://github.com/obra/superpowers)
+> that routes `subagent-driven-development`'s three review touchpoints (task-review,
+> re-review, final-review) through [codex-mcp-server](https://github.com/ThatsHoon/codex-mcp-server)
+> to Codex CLI instead of a Claude Agent reviewer — see that skill's `SKILL.md` for the
+> routing details. The implementer role is untouched upstream behavior.
+>
+> **Running this on Linux (Ubuntu 24.04+)?** The install/environment issues you'll hit —
+> `spawn codex ENOENT`, `npm install -g` `EACCES`, and `codex review` failing with
+> `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted` — are all on the
+> `codex-mcp-server` side, not this repo. See its
+> [Linux Setup Notes](https://github.com/ThatsHoon/codex-mcp-server#linux-setup-notes-ubuntu-2404) —
+> none of them need code changes here.
+
 ## Table of Contents
 
 - [How it works](#how-it-works)
